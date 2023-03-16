@@ -409,17 +409,24 @@ public class ClusteredSortAgentScheduler extends CatsModuleAware
 
       // Loop until we either run out of threads to use, or agents (which are keys) to run.
       while (!keys.isEmpty() && runningAgents.map(Semaphore::tryAcquire).orElse(true)) {
-        String agent = keys.remove(0);
+        try {
+          String agent = keys.remove(0);
 
-        AgentWorker worker = agents.get(agent);
-        ScoreTuple score;
-        if (worker != null && (score = acquireAgent(worker.agent)) != null) {
-          // This score is used to determine if the worker thread running the agent is allowed to
-          // store its results.
-          // If on release of this agent, the scores don't match, this agent was rescheduled by a
-          // separate thread.
-          worker.setScore(score.acquireScore);
-          workers.add(worker);
+          AgentWorker worker = agents.get(agent);
+          ScoreTuple score;
+          if (worker != null && (score = acquireAgent(worker.agent)) != null) {
+            // This score is used to determine if the worker thread running the agent is allowed to
+            // store its results.
+            // If on release of this agent, the scores don't match, this agent was rescheduled by a
+            // separate thread.
+            worker.setScore(score.acquireScore);
+            workers.add(worker);
+          } else {
+            runningAgents.ifPresent(Semaphore::release);
+          }
+        } catch (Throwable t) {
+          log.error("Failed to add AgentWorker", t);
+          runningAgents.ifPresent(Semaphore::release);
         }
       }
 
